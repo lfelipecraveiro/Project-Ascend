@@ -1,0 +1,8 @@
+.DS_Store
+Thumbs.db
+node_modules/
+.env
+*.log
+# backups pessoais exportados do app não devem ir para o repositório público
+ascend-backup*.json
+*.bak

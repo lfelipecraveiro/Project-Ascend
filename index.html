@@ -1,0 +1,247 @@
+<!DOCTYPE html>
+<html lang="pt-BR"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Project Ascend</title>
+<style>
+:root{box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px);color-scheme:dark;--bg:#0d0e12;--sf:#16181f;--sf2:#1e212b;--tx:#e9ebf2;--mu:#8a8fa3;--ac:#7c6cff;--ok:#34d399;--bad:#f87171;--bd:#2a2d3a}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--tx);font:15px/1.5 "Segoe UI",system-ui,-apple-system,Roboto,sans-serif}
+nav{display:flex;gap:4px;overflow-x:auto;padding:10px 14px;border-bottom:1px solid var(--bd);align-items:center}
+nav b{margin-right:12px;font-size:17px;letter-spacing:.3px;white-space:nowrap}
+nav button{background:none;border:0;color:var(--mu);padding:8px 12px;border-radius:8px;cursor:pointer;font:inherit;white-space:nowrap}
+nav button.on{background:var(--sf2);color:var(--tx)}
+main{padding:16px;max-width:1300px;margin:auto}
+h2{margin:0 0 12px;font-size:20px}h3{margin:0 0 8px;font-size:15px}
+.g{display:grid;gap:12px;grid-template-columns:repeat(auto-fit,minmax(150px,1fr))}
+.g2{display:grid;gap:12px;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));margin-top:12px}
+.c{background:var(--sf);border:1px solid var(--bd);border-radius:12px;padding:14px}
+.big{font-size:26px;font-weight:700}.mu{color:var(--mu);font-size:13px}
+.bar{height:8px;background:var(--sf2);border-radius:6px;overflow:hidden;margin-top:6px}.bar i{display:block;height:100%;background:var(--ac)}
+input,select,textarea{background:var(--sf2);border:1px solid var(--bd);color:var(--tx);border-radius:8px;padding:8px 10px;font:inherit;min-width:0}
+textarea{width:100%;min-height:110px;font:12px monospace}
+button.b{background:var(--ac);border:0;color:#fff;border-radius:8px;padding:8px 14px;cursor:pointer;font:inherit}
+button.s{background:var(--sf2);border:1px solid var(--bd);color:var(--tx);border-radius:6px;padding:3px 8px;cursor:pointer;font-size:12px}
+button:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid var(--ac);outline-offset:1px}
+.row{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:12px}
+.cols{display:flex;gap:12px;overflow-x:auto;align-items:flex-start;padding-bottom:12px}
+.col{background:var(--sf);border:1px solid var(--bd);border-radius:12px;padding:10px;min-width:250px;width:250px;min-height:90px}
+.col.over{border-color:var(--ac)}
+.col .ti{background:none;border:0;font-weight:600;width:calc(100% - 30px);padding:2px}
+.card{background:var(--sf2);border:1px solid var(--bd);border-radius:9px;padding:9px;margin-top:8px;cursor:grab}
+.card.d .t{text-decoration:line-through;color:var(--mu)}
+.chip{font-size:11px;padding:1px 7px;border-radius:9px;background:var(--bd);margin-right:4px;display:inline-block}
+.pa{color:var(--bad)}.pm{color:#fbbf24}.pb{color:var(--ok)}
+.li{display:flex;gap:8px;align-items:center;padding:6px 0;border-bottom:1px solid var(--bd)}.li:last-child{border:0}.li span{flex:1}
+.dots i{display:inline-block;width:12px;height:12px;border-radius:3px;background:var(--sf2);margin-right:3px}.dots i.on{background:var(--ok)}
+.bd{display:inline-block;padding:5px 10px;border-radius:8px;margin:3px;background:var(--sf2);color:var(--mu);font-size:13px}.bd.on{background:var(--ac);color:#fff}
+.empty{color:var(--mu);padding:10px 0;font-size:14px}
+.mv{width:100%;margin-bottom:6px;padding:4px;font-size:12px}
+</style></head><body>
+<nav id="nav"></nav><main id="app"></main>
+<script>
+/* ===== Dados e persistência ===== */
+const K='ascend.v1';let mem=null;
+const uid=()=>Math.random().toString(36).slice(2,9);
+const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const dk=(d=new Date())=>new Date(d.getTime()-d.getTimezoneOffset()*6e4).toISOString().slice(0,10);
+const fd=s=>s?s.split('-').reverse().join('/'):'';
+const $=s=>document.querySelector(s),val=id=>($('#'+id)||{}).value||'';
+function init(){const cols=['Caixa de entrada','Planejamento','A fazer','Em andamento','Em espera','Concluído'].map((n,i)=>({id:uid(),name:n,done:i==5}));
+const b={id:uid(),name:'Meu quadro',cards:[],cols};
+return{xp:0,coins:0,boards:[b],cur:b.id,view:'dash',habits:[],cls:[],log:[],pen:{d:'',a:0},
+rewards:[['30 min de lazer',30],['Episódio de uma série',50],['1 hora de jogo',80]].map(r=>({id:uid(),name:r[0],cost:r[1]})),
+cfg:{s:[5,10],m:[15,20],c:[30,50],h:[10,5],cb:25,cbc:10,pen:5,cap:15,tcap:200}}}
+/* ===== MÓDULO: Persistência e validação ===== */
+let persistOk=true;const FORMAT=2; /* versão do formato de dados */
+const Store={
+// Valida e completa qualquer dado (storage ou importação): ids saneados e únicos, tipos checados, campos novos migrados.
+normalize(o){
+ Store.err='';if(!o||typeof o!='object'||!Array.isArray(o.boards)||!o.boards.length){Store.err='Arquivo inválido: não é um backup do Project Ascend.';return null}
+ if(o.v>FORMAT){Store.err='Este backup é de uma versão mais nova (v'+o.v+') que a suportada (v'+FORMAT+').';return null}
+ const D=init(),t=dk(),seen=new Set(),A=a=>Array.isArray(a)?a:[],cl=v=>String(v||'').replace(/[^\w-]/g,''),
+ n=(v,d=0)=>(v!==null&&v!==''&&Number.isFinite(+v))?Math.max(0,+v):d,
+ s=(v,l=200)=>String(v??'').slice(0,l),dt=v=>/^\d{4}-\d{2}-\d{2}$/.test(v)?v:'',
+ uq=v=>{let x=cl(v);if(!x||seen.has(x))x=uid();seen.add(x);return x},
+ pr=(a,d)=>Array.isArray(a)?[n(a[0],d[0]),n(a[1],d[1])]:d,oc=o.cfg||{},bm={};
+ const boards=o.boards.map(b=>{b=b||{};const cm={};bm[cl(b.id)]=uq(b.id);const bid=bm[cl(b.id)];
+  const cols=A(b.cols).map(c=>{c=c||{};const id=uq(c.id);cm[cl(c.id)]=id;return{id,name:s(c.name,60)||'Lista',done:!!c.done}});
+  if(!cols.length)cols.push({id:uq(),name:'A fazer',done:false});
+  const cards=A(b.cards).map(c=>{c=c||{};return{id:uq(c.id),t:s(c.t)||'(sem título)',pr:['b','m','a'].includes(c.pr)?c.pr:'m',cx:['s','m','c'].includes(c.cx)?c.cx:'s',due:dt(c.due),col:cm[cl(c.col)]||cols[0].id,done:!!c.done,rew:(c.rew||c.done)?1:0,pen:c.pen?1:0,just:!!c.just,created:dt(c.created)||t,d:s(c.d,2000),h:A(c.h).slice(-50).map(x=>({ts:n(x&&x.ts,Date.now()),txt:s(x&&x.txt,200)}))}});
+  return{id:bid,name:s(b.name,60)||'Quadro',cols,cards}});
+ const log=A(o.log).slice(0,50000).map(e=>({id:uq(e&&e.id),ts:n(e&&e.ts,Date.now()),type:s(e&&e.type,20)||'legacy',key:s(e&&e.key,80),txt:s(e&&e.txt),xp:+(e&&e.xp)||0,coins:+(e&&e.coins)||0}));
+ const act={};if(o.act&&typeof o.act=='object'){for(const k in o.act)if(dt(k))act[k]=n(o.act[k])}else log.forEach(e=>{if(e.xp>0){const k=dk(new Date(e.ts));act[k]=(act[k]||0)+e.xp}});
+ const X=n(o.xp),C=n(o.coins),sx=log.reduce((a,e)=>a+e.xp,0),sc=log.reduce((a,e)=>a+e.coins,0);
+ if(Math.round(sx)!=Math.round(X)||Math.round(sc)!=Math.round(C))log.unshift({id:uid(),ts:Date.now(),type:o.v>=2?'reconcile':'migration',key:'',txt:'Ajuste para conciliar o saldo com o histórico',xp:X-sx,coins:C-sc});
+ return{v:FORMAT,xp:X,coins:C,boards,cur:bm[cl(o.cur)]||boards[0].id,
+  view:['dash','boards','habits','cls','shop','cfg'].includes(o.view)?o.view:'dash',log,act,
+  pen:{d:dt(o.pen&&o.pen.d),a:n(o.pen&&o.pen.a)},penSince:dt(o.penSince)||t,
+  habits:A(o.habits).map(h=>{h=h||{};const days=[...new Set(A(h.days).filter(dt))];return{id:uq(h.id),name:s(h.name,100)||'Hábito',xp:n(h.xp,10),days,paid:Array.isArray(h.paid)?[...new Set(h.paid.filter(dt))]:days.slice()}}),
+  cls:A(o.cls).map(l=>{l=l||{};return{id:uq(l.id),name:s(l.name,100)||'Checklist',bonus:typeof l.bonus=='string'?dt(l.bonus):(l.bonus?t:''),items:A(l.items).map(i=>{i=i||{};return{id:uq(i.id),t:s(i.t)||'Item',xp:n(i.xp,5),d:!!i.d,rw:dt(i.rw)||(i.d?t:'')}})}}),
+  rewards:Array.isArray(o.rewards)?o.rewards.map(r=>({id:uq(r&&r.id),name:s(r&&r.name,100)||'Recompensa',cost:Math.max(1,n(r&&r.cost,1))})):D.rewards,
+  cfg:{s:pr(oc.s,D.cfg.s),m:pr(oc.m,D.cfg.m),c:pr(oc.c,D.cfg.c),h:pr(oc.h,D.cfg.h),cb:n(oc.cb,25),cbc:n(oc.cbc,10),pen:n(oc.pen,5),cap:n(oc.cap,15),tcap:n(oc.tcap,200)}}},
+load(){let raw=null;try{raw=localStorage.getItem(K);if(raw){const o=Store.normalize(JSON.parse(raw));if(o)return o}}catch(e){}
+ if(raw){try{localStorage.setItem(K+'.corrupt',raw)}catch(e){}} /* dados ilegíveis são preservados antes de qualquer sobrescrita */
+ return mem||Store.normalize(init())},
+save(){try{localStorage.setItem(K,JSON.stringify(S));persistOk=true}catch(e){mem=S;persistOk=false}},
+backup(){try{localStorage.setItem(K+'.bak',JSON.stringify(S))}catch(e){}}};
+const load=Store.load,save=Store.save;
+let S=load();
+/* ===== MÓDULO: Tarefas e quadros (constantes, busca, conclusão, movimentação) ===== */
+const CX={s:'Simples',m:'Intermediária',c:'Complexa'},PR={b:'Baixa',m:'Média',a:'Alta'},W={b:1,m:2,a:3};
+/* ===== MÓDULO: Gamificação (única porta de entrada de XP e moedas) ===== */
+/* Livro-razão = S.log. Cada mudança de saldo é uma transação com id; a chave única impede repetir a mesma recompensa.
+   Editar ou excluir cartões nunca chama award(), portanto nunca mexe no saldo. */
+function award(xp,coins,txt,type='adjust',key=''){
+ if(key&&S.log.some(e=>e.key===key))return{dx:0,dc:0,dup:true};
+ const x0=S.xp,c0=S.coins;S.xp=Math.max(0,x0+xp);S.coins=Math.max(0,c0+coins);
+ const dx=S.xp-x0,dc=S.coins-c0;if(!dx&&!dc&&!key)return{dx,dc};
+ S.log.unshift({id:uid(),ts:Date.now(),type,key,txt,xp:dx,coins:dc});
+ if(dx>0){const k=dk();S.act[k]=(S.act[k]||0)+dx}return{dx,dc}}
+function audit(){const x=S.log.reduce((a,e)=>a+e.xp,0),c=S.log.reduce((a,e)=>a+e.coins,0);return{ok:x==S.xp&&c==S.coins,x,c}}
+function lvl(x){let l=1,n=100;while(x>=n){x-=n;l++;n=100+50*(l-1)}return{l,cur:x,need:n}}
+const cards=()=>S.boards.flatMap(b=>b.cards.map(c=>({...c,_b:b})));
+function findCard(id){for(const b of S.boards){const c=b.cards.find(x=>x.id==id);if(c)return[b,c]}return[]}
+function chg(c,t){c.h=c.h||[];c.h.push({ts:Date.now(),txt:t});c.h=c.h.slice(-50)}
+function finish(b,c){const dc=b.cols.find(x=>x.done);if(dc)c.col=dc.id;if(!c.done)chg(c,'Concluído');c.done=true;
+if(!c.rew){c.rew=1;let[x,m]=S.cfg[c.cx];const k=dk(),got=S.log.filter(e=>e.type=='task'&&dk(new Date(e.ts))==k).reduce((a,e)=>a+e.xp,0);
+ if(S.cfg.tcap>0&&got+x>S.cfg.tcap){x=0;m=0;toast('Limite diário de XP por tarefas atingido: esta conclusão não gerou recompensa.')}
+ award(x,m,'Tarefa concluída: '+c.t,'task','task:'+c.id)}}
+function moveCard(bb,c,colId){const d=bb.cols.find(x=>x.id==colId);if(!d||(c.col==d.id&&c.done==!!d.done))return;if(d.done)finish(bb,c);else{if(c.col!=d.id)chg(c,'Movido para "'+d.name+'"');if(c.done)chg(c,'Reaberto');c.col=d.id;c.done=false}}
+function score(c){const t=dk();let u=0;if(c.due){const d=(new Date(c.due)-new Date(t))/864e5;u=d<0?4:d<=2?3:d<=7?2:1}return W[c.pr]*2+u+(c.cx=='c'?2:c.cx=='m'?1:0)}
+/* ===== MÓDULO: Estatísticas (dias produtivos vêm de S.act, que não é truncado como o log) ===== */
+function days(){return new Set(Object.keys(S.act).filter(k=>S.act[k]>0))}
+function streak(set){let n=0,d=new Date();if(!set.has(dk(d)))d.setDate(d.getDate()-1);while(set.has(dk(d))){n++;d.setDate(d.getDate()-1)}return n}
+/* ===== MÓDULO: Hábitos ===== */
+function hstreak(h){const s=new Set(h.days);let n=0,d=new Date();if(!s.has(dk(d)))d.setDate(d.getDate()-1);while(s.has(dk(d))){n++;d.setDate(d.getDate()-1)}return n}
+/* ===== MÓDULO: Penalidades ===== */
+function applyPen(){const t=dk();if(S.pen.d!=t)S.pen={d:t,a:0};let n=0;if(S.cfg.pen<=0||S.cfg.cap<=0)return 0;
+for(const b of S.boards)for(const c of b.cards){
+ // sem retroatividade (só atrasos após S.penSince, em tarefas criadas antes do prazo) e no máximo uma vez por tarefa
+ if(c.done||c.just||c.pen||!c.due||c.due>=t||c.due<S.penSince||c.created>c.due)continue;
+ const room=S.cfg.cap-S.pen.a;if(room<=0)break;const p=Math.min(S.cfg.pen,room);
+ c.pen=1;n++;const r=award(-Math.ceil(p/2),-p,'Consequência leve (atraso): '+c.t,'penalty','pen:'+c.id);S.pen.a+=-r.dc;chg(c,'Consequência leve aplicada (atraso)')}
+return n}
+/* ===== MÓDULO: Interface (telas) ===== */
+const VIEWS=[['dash','Painel'],['boards','Quadros'],['habits','Hábitos'],['cls','Checklists'],['shop','Recompensas'],['cfg','Configurações']];
+function chart(){const r=[];for(let i=6;i>=0;i--){const d=new Date();d.setDate(d.getDate()-i);const k=dk(d);
+r.push([k.slice(8)+'/'+k.slice(5,7),S.act[k]||0])}
+const mx=Math.max(10,...r.map(x=>x[1]));
+return`<svg viewBox="0 0 280 120" width="100%" role="img" aria-label="XP dos últimos 7 dias">${r.map((x,i)=>{const h=x[1]/mx*80;
+return`<rect x="${i*40+6}" y="${95-h}" width="28" height="${h}" rx="4" fill="#7c6cff"/><text x="${i*40+20}" y="${90-h}" font-size="9" fill="#8a8fa3" text-anchor="middle">${x[1]||''}</text><text x="${i*40+20}" y="112" font-size="9" fill="#8a8fa3" text-anchor="middle">${x[0]}</text>`}).join('')}</svg>`}
+function dash(){const cs=cards(),t=dk(),done=cs.filter(c=>c.done),pend=cs.filter(c=>!c.done),L=lvl(S.xp),st=streak(days());
+const pl=cs.filter(c=>!c.just&&(c.done||(c.due&&c.due<=t))),pw=pl.reduce((a,c)=>a+W[c.pr],0);
+const cons=pw?Math.round(100*pl.filter(c=>c.done).reduce((a,c)=>a+W[c.pr],0)/pw)+'%':'—';
+const rate=cs.length?Math.round(100*done.length/cs.length)+'%':'—';
+const hd=S.habits.filter(h=>h.days.includes(t)).length,hc=S.habits.reduce((a,h)=>a+h.days.length,0);
+const wk=[...Array(7)].map((_,i)=>{const d=new Date();d.setDate(d.getDate()-i);return dk(d)});
+const wkd=S.habits.length?Math.round(100*S.habits.reduce((a,h)=>a+wk.filter(k=>h.days.includes(k)).length,0)/(S.habits.length*7))+'%':'—';
+const next=pend.sort((a,b)=>score(b)-score(a)).slice(0,6);
+const ach=[['Primeiro passo',done.length>=1],['Consistência (7 dias)',st>=7],['Disciplina (30 hábitos)',hc>=30],['Determinação (alta prioridade)',done.some(c=>c.pr=='a')],['Evolução (nível 10)',L.l>=10]];
+const stat=(l,v)=>`<div class="c"><div class="mu">${l}</div><div class="big">${v}</div></div>`;
+return`<h2>Painel</h2><div class="g">${stat('Nível',L.l)}${stat('XP total',S.xp)}${stat('Moedas',S.coins)}${stat('Sequência (dias)',st)}${stat('Taxa de conclusão',rate)}${stat('Índice de Consistência',cons)}${stat('Pendentes',pend.length)}${stat('Concluídas',done.length)}${stat('Hábitos hoje',hd+'/'+S.habits.length)}${stat('Disciplina semanal',wkd)}</div>
+<div class="c" style="margin-top:12px"><div class="mu">Nível ${L.l}: ${L.cur}/${L.need} XP para o próximo</div><div class="bar"><i style="width:${100*L.cur/L.need}%"></i></div></div>
+<div class="g2"><div class="c"><h3>XP nos últimos 7 dias</h3>${chart()}</div>
+<div class="c"><h3>Próximas tarefas (prioridade automática)</h3>${next.length?next.map(c=>`<div class="li"><span>${esc(c.t)}</span><span class="mu" style="flex:none">${c.due?fd(c.due):'sem prazo'}</span></div>`).join(''):'<div class="empty">Nenhuma tarefa pendente. Crie cartões na aba Quadros.</div>'}
+<div class="row" style="margin:10px 0 0"><button class="s" data-a="pen">Aplicar consequências de atrasos</button><span class="mu">Limite diário: ${S.cfg.cap} moedas. Tarefas justificadas ficam isentas.</span></div></div>
+<div class="c"><h3>Conquistas</h3>${ach.map(a=>`<span class="bd ${a[1]?'on':''}">${a[1]?'✓':'🔒'} ${a[0]}</span>`).join('')}</div>
+<div class="c"><h3>Histórico recente</h3>${S.log.length?S.log.slice(0,8).map(e=>`<div class="li"><span>${esc(e.txt)}</span><span class="mu" style="flex:none">${e.xp>=0?'+':''}${e.xp} XP · ${e.coins>=0?'+':''}${e.coins} 🪙</span></div>`).join(''):'<div class="empty">As ações com XP e moedas aparecem aqui.</div>'}</div></div>`}
+function editPanel(b){const c=b.cards.find(x=>x.id==editing);if(!c)return'';
+return`<div class="c" style="margin-bottom:12px"><h3>Editar cartão ${c.rew?'<span class="chip">recompensa já registrada</span>':''}</h3>
+<div class="row"><input id="et" value="${esc(c.t)}" style="flex:1;min-width:180px" aria-label="Título"></div>
+<textarea id="ed" style="font:inherit;min-height:70px" placeholder="Descrição">${esc(c.d||'')}</textarea>
+<div class="row" style="margin-top:8px"><select id="ep">${Object.keys(PR).map(k=>`<option value="${k}" ${k==c.pr?'selected':''}>Prioridade ${PR[k].toLowerCase()}</option>`).join('')}</select>
+<select id="ex">${Object.keys(CX).map(k=>`<option value="${k}" ${k==c.cx?'selected':''}>${CX[k]}</option>`).join('')}</select><input id="eu" type="date" value="${esc(c.due)}">
+<button class="b" data-a="esave" data-id="${c.id}">Salvar</button><button class="s" data-a="ecancel">Cancelar</button></div>
+<div class="mu">Editar não altera XP nem moedas já recebidos.</div><h3 style="margin-top:10px">Histórico de alterações</h3>
+${(c.h||[]).slice().reverse().slice(0,12).map(x=>`<div class="li"><span>${esc(x.txt)}</span><span class="mu" style="flex:none">${new Date(x.ts).toLocaleString('pt-BR')}</span></div>`).join('')||'<div class="empty">Sem alterações registradas.</div>'}</div>`}
+function boards(){const b=S.boards.find(x=>x.id==S.cur)||S.boards[0];S.cur=b.id;
+const card=c=>`<div class="card ${c.done?'d':''}" draggable="true" data-id="${c.id}"><div class="t">${esc(c.t)}</div>${c.d?`<div class="mu">${esc(c.d.slice(0,80))}</div>`:''}
+<div style="margin:4px 0"><span class="chip p${c.pr}">${PR[c.pr]}</span><span class="chip">${CX[c.cx]}</span>${c.due?`<span class="chip ${c.due<dk()&&!c.done?'pa':''}">${fd(c.due)}</span>`:''}${c.just?'<span class="chip">justificada</span>':''}</div>
+<select class="mv" data-ch="mv" data-id="${c.id}" aria-label="Mover cartão">${b.cols.map(x=>`<option value="${x.id}" ${x.id==c.col?'selected':''}>${esc(x.name)}</option>`).join('')}</select>
+<button class="s" data-a="done" data-id="${c.id}">✓</button> <button class="s" data-a="adiar" data-id="${c.id}">+1 dia</button> <button class="s" data-a="just" data-id="${c.id}">Justificar</button> <button class="s" data-a="edit" data-id="${c.id}">Editar</button> ${confirmDel==c.id?`<button class="s" style="border-color:var(--bad);color:var(--bad)" data-a="delc" data-id="${c.id}">Confirmar exclusão</button> <button class="s" data-a="cdel">Cancelar</button>`:`<button class="s" data-a="delc" data-id="${c.id}">✕</button>`}</div>`;
+return`<h2>Quadros</h2><div class="row"><select id="bs" data-ch="board">${S.boards.map(x=>`<option value="${x.id}" ${x.id==b.id?'selected':''}>${esc(x.name)}</option>`).join('')}</select>
+<input id="nb" placeholder="Novo quadro"><button class="b" data-a="addB">Criar quadro</button></div>
+<div class="row c"><input id="ct" placeholder="Título do cartão" style="flex:1;min-width:160px"><select id="cp"><option value="b">Prioridade baixa</option><option value="m" selected>Prioridade média</option><option value="a">Prioridade alta</option></select>
+<select id="cx"><option value="s">Simples</option><option value="m">Intermediária</option><option value="c">Complexa</option></select><input id="cd" type="date"><button class="b" data-a="addC">Adicionar cartão</button></div>
+${editPanel(b)}<div class="cols">${b.cols.map(col=>`<div class="col" data-col="${col.id}"><input class="ti" value="${esc(col.name)}" data-ch="ren" data-id="${col.id}"><button class="s" data-a="delL" data-id="${col.id}" title="Excluir lista">✕</button>
+${b.cards.filter(c=>c.col==col.id).map(card).join('')||'<div class="empty">Arraste cartões para cá.</div>'}</div>`).join('')}
+<div class="col"><input id="nl" placeholder="Nova lista"> <button class="s" data-a="addL">Criar</button></div></div>`}
+function habits(){const t=dk();return`<h2>Hábitos</h2><div class="row c"><input id="hn" placeholder="Novo hábito (ex.: Estudar programação)" style="flex:1;min-width:180px"><input id="hx" type="number" min="0" value="${S.cfg.h[0]}" style="width:80px" title="XP"><button class="b" data-a="addH">Adicionar hábito</button></div>
+${S.habits.length?S.habits.map(h=>{const dots=[...Array(14)].map((_,i)=>{const d=new Date();d.setDate(d.getDate()-13+i);return`<i class="${h.days.includes(dk(d))?'on':''}"></i>`}).join('');
+return`<div class="c li" style="margin-bottom:8px"><input type="checkbox" data-ch="hab" data-id="${h.id}" ${h.days.includes(t)?'checked':''} aria-label="Hábito feito hoje"><span><b>${esc(h.name)}</b><br><span class="mu">${h.xp} XP · sequência: ${hstreak(h)} dia(s) · total: ${h.days.length}</span></span><span class="dots">${dots}</span><button class="s" data-a="delH" data-id="${h.id}">✕</button></div>`}).join(''):'<div class="empty">Nenhum hábito ainda. Um hábito não exige horário: basta cumpri-lo no dia.</div>'}`}
+function cls(){return`<h2>Checklists pontuados</h2><div class="row c"><input id="cn" placeholder="Nome (ex.: Rotina matinal)" style="flex:1"><button class="b" data-a="addCL">Criar checklist</button></div>
+${S.cls.length?S.cls.map(l=>{const dn=l.items.filter(i=>i.d).length;return`<div class="c" style="margin-bottom:10px"><div class="row" style="margin-bottom:6px"><h3 style="margin:0;flex:1">${esc(l.name)} <span class="mu">${dn}/${l.items.length}${l.bonus==dk()?' · bônus de hoje recebido':''}</span></h3><button class="s" data-a="rstCL" data-id="${l.id}">Reiniciar dia</button><button class="s" data-a="delCL" data-id="${l.id}">✕</button></div>
+${l.items.map(i=>`<div class="li"><input type="checkbox" data-ch="tick" data-id="${l.id}" data-i="${i.id}" ${i.d?'checked':''}><span>${esc(i.t)}</span><span class="mu">${i.xp} XP</span></div>`).join('')||'<div class="empty">Adicione itens com pontuação.</div>'}
+<div class="row" style="margin:8px 0 0"><input id="in${l.id}" placeholder="Novo item" style="flex:1"><input id="ix${l.id}" type="number" min="0" value="5" style="width:70px"><button class="s" data-a="addI" data-id="${l.id}">Adicionar</button></div></div>`}).join(''):'<div class="empty">Crie um checklist e dê um valor em XP a cada item. Completar 100% rende bônus.</div>'}`}
+function shop(){return`<h2>Recompensas</h2><div class="c" style="margin-bottom:12px">Saldo: <b>${S.coins} 🪙</b></div><div class="row c"><input id="rn" placeholder="Nova recompensa" style="flex:1"><input id="rc" type="number" min="1" value="30" style="width:90px"><button class="b" data-a="addR">Criar</button></div>
+${S.rewards.map(r=>`<div class="c li" style="margin-bottom:8px"><span>${esc(r.name)}</span><span class="mu">${r.cost} 🪙</span><button class="s" data-a="buy" data-id="${r.id}" ${S.coins<r.cost?'disabled':''}>Resgatar</button><button class="s" data-a="delR" data-id="${r.id}">✕</button></div>`).join('')||'<div class="empty">Crie recompensas para gastar suas moedas.</div>'}`}
+function bakInfo(){try{const r=JSON.parse(localStorage.getItem(K+'.bak'));return r?'salva (XP '+r.xp+', '+r.boards.reduce((a,b)=>a+(b.cards||[]).length,0)+' cartões)':'nenhuma ainda'}catch(e){return'nenhuma ainda'}}
+function auditHtml(){const a=audit(),L=S.log.slice(0,25);return`<p class="${a.ok?'pb':'pa'}">${a.ok?'✓ O saldo confere com o histórico de transações.':'⚠ Divergência entre saldo e histórico.'} (${S.log.length} transações · XP ${a.x} · moedas ${a.c})</p>`+(L.map(e=>`<div class="li"><span>${esc(e.txt)} <span class="mu">${esc(e.type)}</span></span><span class="mu" style="flex:none">${e.xp>=0?'+':''}${e.xp} XP · ${e.coins>=0?'+':''}${e.coins} 🪙 · ${new Date(e.ts).toLocaleDateString('pt-BR')}</span></div>`).join('')||'<div class="empty">Sem transações.</div>')}
+function cfg(){const c=S.cfg,n=(id,v)=>`<input id="${id}" type="number" min="0" value="${v}" style="width:70px">`;
+return`<h2>Configurações</h2><div class="c"><h3>Pontuação (XP / moedas)</h3><div class="row">Simples ${n('f1',c.s[0])}${n('f2',c.s[1])} Intermediária ${n('f3',c.m[0])}${n('f4',c.m[1])} Complexa ${n('f5',c.c[0])}${n('f6',c.c[1])}</div>
+<div class="row">Bônus de checklist completo: XP ${n('f7',c.cb)} moedas ${n('f8',c.cbc)}</div><h3>Consequências</h3><div class="row">Moedas perdidas por tarefa atrasada ${n('f9',c.pen)} Limite por dia ${n('f10',c.cap)} <span class="mu">(use 0 para desligar)</span></div>
+<div class="row">XP máximo por dia vindo de tarefas ${n('f11',c.tcap)} <span class="mu">(0 = sem limite; impede farmar XP com tarefas triviais)</span></div><button class="b" data-a="saveCfg">Salvar configurações</button> <span class="mu">Valem para conclusões futuras; XP já concedido não muda.</span></div>
+<div class="c" style="margin-top:12px"><h3>Backup (JSON)</h3><p class="mu">Copie o texto para guardar seus dados. Para restaurar, cole um backup e importe.</p><textarea id="bk">${esc(JSON.stringify(S))}</textarea><div class="row" style="margin:8px 0 0"><button class="b" data-a="imp">Importar backup</button><button class="s" data-a="snap">Salvar cópia local agora</button><button class="s" data-a="rest">Recuperar última cópia local</button><span id="msg" class="mu"></span></div><p class="mu">Formato de dados v${FORMAT}. Cópia local: ${bakInfo()}</p></div>
+<div class="c" style="margin-top:12px"><h3>Auditoria do saldo</h3>${auditHtml()}</div>`}
+function render(){$('#nav').innerHTML='<b>🚀 Project Ascend</b>'+(persistOk?'':'<span class="pa" style="white-space:nowrap">⚠ dados não estão sendo salvos</span>')+VIEWS.map(v=>`<button class="${S.view==v[0]?'on':''}" data-a="nav" data-id="${v[0]}">${v[1]}</button>`).join('');
+const f={dash,boards,habits,cls,shop,cfg}[S.view]||dash;try{$('#app').innerHTML=f()}catch(e){$('#app').innerHTML='<div class="c">Erro ao exibir esta página. Seus dados estão preservados.</div>';console.error(e)}}
+/* ===== MÓDULO: Interface (eventos) ===== */
+let editing=null,confirmDel=null,pend='';
+function toast(m){let t=$('#toast');if(!t){t=document.createElement('div');t.id='toast';t.setAttribute('role','status');t.style.cssText='position:fixed;left:50%;bottom:calc(20px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);background:#1e212b;border:1px solid #2a2d3a;color:#e9ebf2;padding:10px 16px;border-radius:10px;z-index:9;max-width:90%;font-size:14px';document.body.appendChild(t)}
+t.textContent=m;t.style.display='block';clearTimeout(t._t);t._t=setTimeout(()=>t.style.display='none',4500)}
+const cur=()=>S.boards.find(x=>x.id==S.cur)||S.boards[0];
+document.addEventListener('click',e=>{const el=e.target.closest('[data-a]');if(!el)return;const a=el.dataset.a,id=el.dataset.id,b=cur();if(a!='delc')confirmDel=null;if(a!='imp'&&a!='rest')pend='';
+if(a=='nav')S.view=id;
+else if(a=='addB'){const n=val('nb').trim();if(!n)return;const nb={id:uid(),name:n,cards:[],cols:b.cols.map(c=>({id:uid(),name:c.name,done:c.done}))};S.boards.push(nb);S.cur=nb.id}
+else if(a=='addC'){const t=val('ct').trim();if(!t)return;const dc=b.cols.find(c=>!c.done)||b.cols[0];if(!dc)return;b.cards.push({id:uid(),t,pr:val('cp'),cx:val('cx'),due:val('cd'),col:dc.id,done:false,created:dk(),d:'',h:[{ts:Date.now(),txt:'Cartão criado'}]})}
+else if(a=='done'){const[bb,c]=findCard(id);if(c){if(c.done){c.done=false;chg(c,'Reaberto');const f=bb.cols.find(x=>!x.done);if(f)c.col=f.id}else finish(bb,c)}}
+else if(a=='adiar'){const[,c]=findCard(id);if(c){const d=new Date((c.due||dk())+'T12:00:00');d.setDate(d.getDate()+1);c.due=dk(d);chg(c,'Prazo adiado para '+fd(c.due))}}
+else if(a=='just'){const[,c]=findCard(id);if(c){c.just=!c.just;chg(c,c.just?'Marcado como justificado':'Justificativa removida')}}
+else if(a=='delc'){if(confirmDel!=id)confirmDel=id;else{const[bb]=findCard(id);if(bb)bb.cards=bb.cards.filter(c=>c.id!=id);confirmDel=null;if(editing==id)editing=null;toast('Cartão excluído. Recompensas já recebidas continuam no histórico.')}}
+else if(a=='cdel')confirmDel=null;
+else if(a=='edit'){editing=id}
+else if(a=='ecancel')editing=null;
+else if(a=='esave'){const[,c]=findCard(id);if(c){const v={t:val('et').trim().slice(0,200)||c.t,d:val('ed').trim().slice(0,2000),pr:PR[val('ep')]?val('ep'):c.pr,cx:CX[val('ex')]?val('ex'):c.cx,due:/^\d{4}-\d{2}-\d{2}$/.test(val('eu'))?val('eu'):''},ch=[];
+ if(v.t!=c.t)ch.push('título');if(v.d!=(c.d||''))ch.push('descrição');if(v.pr!=c.pr)ch.push('prioridade '+PR[c.pr]+' → '+PR[v.pr]);if(v.cx!=c.cx)ch.push('complexidade '+CX[c.cx]+' → '+CX[v.cx]);if(v.due!=c.due)ch.push('prazo '+(fd(c.due)||'—')+' → '+(fd(v.due)||'—'));
+ Object.assign(c,v);if(ch.length)chg(c,'Editado: '+ch.join('; '));editing=null}}
+else if(a=='addL'){const n=val('nl').trim();if(n)b.cols.push({id:uid(),name:n,done:false})}
+else if(a=='delL'){const col=b.cols.find(c=>c.id==id),last=col&&col.done&&b.cols.filter(c=>c.done).length==1;
+if(b.cols.length>1&&!last&&!b.cards.some(c=>c.col==id))b.cols=b.cols.filter(c=>c.id!=id);else return toast(last?'Mantenha ao menos uma lista de concluídos.':'Esvazie a lista antes de excluir. Um quadro precisa de ao menos uma lista.')}
+else if(a=='pen'){const n=applyPen();toast(n?n+' tarefa(s) atrasada(s) receberam consequência leve.':'Nenhuma penalidade a aplicar (sem atrasos novos, limite diário atingido ou tarefas justificadas).')}
+else if(a=='addH'){const n=val('hn').trim();if(n)S.habits.push({id:uid(),name:n,xp:Math.max(0,+val('hx')||0),days:[],paid:[]})}
+else if(a=='delH')S.habits=S.habits.filter(h=>h.id!=id);
+else if(a=='addCL'){const n=val('cn').trim();if(n)S.cls.push({id:uid(),name:n,items:[],bonus:''})}
+else if(a=='delCL')S.cls=S.cls.filter(l=>l.id!=id);
+else if(a=='rstCL'){const l=S.cls.find(x=>x.id==id);if(l){l.items.forEach(i=>i.d=false)}}
+else if(a=='addI'){const l=S.cls.find(x=>x.id==id),t=val('in'+id).trim();if(l&&t)l.items.push({id:uid(),t,xp:Math.max(0,+val('ix'+id)||0),d:false,rw:''})}
+else if(a=='addR'){const n=val('rn').trim();if(n)S.rewards.push({id:uid(),name:n,cost:Math.max(1,+val('rc')||1)})}
+else if(a=='delR')S.rewards=S.rewards.filter(r=>r.id!=id);
+else if(a=='buy'){const r=S.rewards.find(x=>x.id==id);if(r&&S.coins>=r.cost)award(0,-r.cost,'Recompensa resgatada: '+r.name,'redeem','redeem:'+uid())}
+else if(a=='saveCfg'){const g=i=>Math.max(0,+val('f'+i)||0),c=S.cfg;c.s=[g(1),g(2)];c.m=[g(3),g(4)];c.c=[g(5),g(6)];c.cb=g(7);c.cbc=g(8);c.pen=g(9);c.cap=g(10);c.tcap=g(11)}
+else if(a=='imp'||a=='rest'){let o=null;Store.err='';try{o=Store.normalize(JSON.parse(a=='imp'?val('bk'):localStorage.getItem(K+'.bak')))}catch(x){Store.err=a=='imp'?'O texto não é um JSON válido.':'Nenhuma cópia local encontrada.'}
+ if(!o){$('#msg').textContent=(Store.err||'Backup inválido.')+' Nada foi alterado.';pend='';return}
+ const cn=o.boards.reduce((s,b)=>s+b.cards.length,0),sig=a+o.xp+'|'+o.coins+'|'+cn+'|'+o.log.length;
+ if(pend!=sig){pend=sig;el.textContent='Confirmar substituição';$('#msg').textContent='Isto substitui os dados atuais por: XP '+o.xp+', '+o.coins+' moedas, '+cn+' cartões. Clique de novo para confirmar; uma cópia dos dados atuais fica guardada.';return}
+ Store.backup();S=o;pend='';toast(a=='imp'?'Backup importado.':'Cópia local restaurada.')}
+else if(a=='snap'){Store.backup();toast('Cópia local salva.')}
+save();render()});
+document.addEventListener('change',e=>{const el=e.target,a=el.dataset.ch;if(!a)return;const b=cur();
+if(a=='board')S.cur=el.value;
+else if(a=='mv'){const[bb,c]=findCard(el.dataset.id);if(c)moveCard(bb,c,el.value)}
+else if(a=='ren'){const c=b.cols.find(x=>x.id==el.dataset.id);if(c&&el.value.trim())c.name=el.value.trim()}
+else if(a=='hab'){const h=S.habits.find(x=>x.id==el.dataset.id),t=dk();if(h){if(el.checked&&!h.days.includes(t)){h.days.push(t);if(!h.paid.includes(t)){h.paid.push(t);award(h.xp,S.cfg.h[1],'Hábito cumprido: '+h.name,'habit','habit:'+h.id+':'+t)}}
+else if(!el.checked)h.days=h.days.filter(d=>d!=t)}}
+else if(a=='tick'){const l=S.cls.find(x=>x.id==el.dataset.id),i=l&&l.items.find(x=>x.id==el.dataset.i),t=dk();if(i){
+if(el.checked&&!i.d){i.d=true;if(i.rw!=t){i.rw=t;award(i.xp,0,'Item concluído: '+i.t,'item','item:'+l.id+':'+i.id+':'+t)}}else if(!el.checked)i.d=false;
+if(l.items.length&&l.items.every(x=>x.d)&&l.bonus!=t){l.bonus=t;award(S.cfg.cb,S.cfg.cbc,'Checklist completo: '+l.name,'bonus','bonus:'+l.id+':'+t)}}}
+save();render()});
+document.addEventListener('dragstart',e=>{const c=e.target.closest&&e.target.closest('.card');if(c)e.dataTransfer.setData('text/plain',c.dataset.id)});
+document.addEventListener('dragover',e=>{const c=e.target.closest&&e.target.closest('.col[data-col]');if(c){e.preventDefault();c.classList.add('over')}});
+document.addEventListener('dragleave',e=>{const c=e.target.closest&&e.target.closest('.col');if(c)c.classList.remove('over')});
+document.addEventListener('drop',e=>{const col=e.target.closest&&e.target.closest('.col[data-col]');if(!col)return;e.preventDefault();
+const[bb,c]=findCard(e.dataTransfer.getData('text/plain'));if(!c)return;moveCard(bb,c,col.dataset.col);save();render()});
+/* sincroniza abas: evita que uma aba sobrescreva os dados da outra */
+window.addEventListener('storage',e=>{if(e.key!==K)return;try{const o=Store.normalize(JSON.parse(e.newValue));if(o){S=o;render()}}catch(x){}});
+render();
+</script></body></html>
